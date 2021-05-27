@@ -3,7 +3,7 @@ import threading
 import tkinter
 import tkinter.scrolledtext
 from tkinter import simpledialog
-import NTRU
+from NTRU import NTRU
 import pickle
 
 HOST = '127.0.0.1'
