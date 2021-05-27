@@ -3,6 +3,8 @@ import threading
 import tkinter
 import tkinter.scrolledtext
 from tkinter import simpledialog
+import NTRU
+import pickle
 
 HOST = '127.0.0.1'
 PORT = 9090
@@ -60,7 +62,26 @@ class Client:
 
     def write(self):
         message = f"{self.nickname}: {self.input_area.get('1.0', 'end')}"
-        self.sock.send(message.encode('utf-8'))
+        
+        N = 11
+        p = 3
+        q = 32
+
+        f = [-1, 1, 1, 0, -1, 0, 1, 0, 0, 1, -1]
+        g = [-1, 0, 1, 1, 0, 1, 0, 0, -1, 0, 1]
+
+        D = [0] * (N + 1)
+        D[0], D[N] = -1, 1
+
+        encryptor = NTRU.NTRU(N, p, q, f, g)
+        encryptor.gen_keys()
+        pubkey = encryptor.get_pubkey()
+
+        encmsg, l = NTRU.encrypt(message, p, q, D, pubkey)
+        d = {1: encmsg, 2: l}
+        msg1 = pickle.dumps(d)
+
+        self.sock.send(msg1)
         self.input_area.delete('1.0', 'end')
 
     def stop(self):
@@ -70,15 +91,36 @@ class Client:
         exit(0)
 
     def receive(self):
+        
+        N = 11
+        p = 3
+        q = 32
+
+        f = [-1, 1, 1, 0, -1, 0, 1, 0, 0, 1, -1]
+        g = [-1, 0, 1, 1, 0, 1, 0, 0, -1, 0, 1]
+
+        D = [0] * (N + 1)
+        D[0], D[N] = -1, 1
+
+        decryptor = NTRU.NTRU(N, p, q, f, g)
+        decryptor.gen_keys()
+        privkey1, privkey2 = decryptor.get_privkeys()
+
         while self.running:
             try:
-                message = self.sock.recv(1024).decode('utf-8')
+                message = pickle.loads(self.sock.recv(1024))
                 if message == 'NICK':
-                    self.sock.send(self.nickname.encode('utf-8'))
+                    nickname = pickle.dumps(self.nickname)
+                    self.sock.send(nickname)
                 else:
                     if self.gui_done:
                         self.text_area.config(state='normal')
-                        self.text_area.insert('end', message)
+                        if type(message) == str:
+                            plaintext = message
+                        else:
+                            plaintext = NTRU.decrypt(message[1], privkey1, privkey2, p, q, D, message[2])
+
+                        self.text_area.insert('end', plaintext)
                         self.text_area.yview('end')
                         self.text_area.config(state='disabled')
             except ConnectionAbortedError:
